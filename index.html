@@ -77,6 +77,9 @@
   .act:active{transform:translateY(1px); box-shadow:none}
   .act.primary{background:var(--blue); border-color:var(--blue); color:#fff; font-weight:700; box-shadow:0 3px 0 #0f56b4; padding:10px 22px}
   .act.primary:active{box-shadow:0 1px 0 #0f56b4}
+  .act.primary.stop{background:var(--coral); border-color:var(--coral); box-shadow:0 3px 0 #cc4530; animation:breathe 1s ease-in-out infinite}
+  @keyframes breathe{0%,100%{transform:scale(1)} 50%{transform:scale(1.04)}}
+  .slot.spot{border-color:var(--sun); background:linear-gradient(var(--paper),var(--sun-soft)); box-shadow:0 0 0 3px rgba(255,197,61,.45), var(--shadow)}
   .act:disabled{opacity:.5; cursor:not-allowed; transform:none}
   .spacer{flex:1}
   :is(button,input,.slot,.chip):focus-visible{outline:3px solid var(--sun); outline-offset:2px}
@@ -145,7 +148,7 @@
   .chip.now{border-color:var(--sun); background:var(--sun-soft)}
   footer{color:var(--ink-3); font-size:12px; text-align:center}
   @media (prefers-reduced-motion: reduce){
-    .slot.pop,.stage.hit .reel{animation:none}
+    .slot.pop,.stage.hit .reel,.act.primary.stop{animation:none}
     .act:hover,.slot:hover{transform:none}
   }
   @media print{
@@ -159,7 +162,7 @@
     <div>
       <div class="eyebrow">民富國小 115 學年上學期 · AI 無人機足球</div>
       <h1>無人機<span class="hl">抽籤對號</span>台</h1>
-      <div class="sub">一位一位抽，抽完就是整學期的機號。編號機先發完，才會用到預備機。</div>
+      <div class="sub">按一下開始滾號碼，什麼時候停由你決定。編號機先發完，才會用到預備機。</div>
     </div>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">連線中…</span></div>
   </header>
@@ -168,7 +171,7 @@
     <div>
       <div class="eyebrow">現在抽籤</div>
       <div class="stageName" id="stageName">準備開始</div>
-      <div class="stageMeta" id="stageMeta">按「抽下一位」，機號會滾動後定格</div>
+      <div class="stageMeta" id="stageMeta">按「抽下一位」開始滾動，再按「停！」定格（也可用空白鍵）</div>
     </div>
     <div>
       <div class="reel" id="reel">––</div>
@@ -314,7 +317,7 @@
   try{ load(JSON.parse(localStorage.getItem("droneDraw2"))); }catch(e){}
 
   /* ---------- 畫面 ---------- */
-  function renderHangar(candKeys, popKey){
+  function renderHangar(candKeys, popKey, spotKey){
     el.hangar.innerHTML = "";
     SLOTS.forEach(sl => {
       const seq = state.assign[sl.key], s = seq ? byId[seq] : null;
@@ -323,7 +326,8 @@
       d.className = "slot" + (sl.spare ? " spare" : "") + (s ? " filled" : " empty") +
         (state.armed === sl.key ? " armed" : "") +
         (candKeys && candKeys.has(sl.key) ? " cand" : "") +
-        (popKey === sl.key ? " pop" : "");
+        (popKey === sl.key ? " pop" : "") +
+        (spotKey === sl.key ? " spot" : "");
       d.tabIndex = 0;
       d.innerHTML =
         '<div class="tag"><span>' + (sl.spare ? "預備機" : "機號") + '</span>' +
@@ -383,6 +387,7 @@
     el.cLeft.textContent = left;
     el.cSeated.textContent = seatedSeqs().size;
     el.cFree.textContent = freeSlots().length;
+    if(spinTimer) return;
     el.nextBtn.disabled = state.drawing || left === 0 || freeSlots().length === 0;
     el.nextBtn.textContent = left === 0 ? "全部抽完了" : "抽下一位";
   }
@@ -394,47 +399,67 @@
   function pick(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
   const wait = ms => new Promise(r => setTimeout(r, ms));
 
-  /* ---------- 一位一位抽 ---------- */
-  async function drawOne(){
-    const pool = waiting();
-    const cands = candidateSlots();
-    if(!pool.length || !cands.length) return false;
+  /* ---------- 一位一位抽：按一下開始跑，再按一下停 ---------- */
+  let spinTimer = null, curCand = null, curStudent = null, curCands = null;
+
+  function startSpin(){
+    const pool = waiting(), cands = candidateSlots();
+    if(!pool.length || !cands.length) return;
 
     state.drawing = true;
     document.body.classList.add("drawing");
-    const student = pick(pool);
-    state.now = student.seq;
-    const target = pick(cands);
-    const candKeys = new Set(cands.map(s => s.key));
+    curStudent = pick(pool);
+    curCands = cands;
+    state.now = curStudent.seq;
 
     el.stage.classList.remove("hit");
     el.stage.classList.add("live");
-    el.stageName.textContent = student.name;
-    el.stageMeta.textContent = student.cls + " · 序號 " + student.seq +
-      (cands[0].spare ? " · 抽預備機" : "");
-    renderCounts(); renderHangar(candKeys); renderRoster();
+    el.stageName.textContent = curStudent.name;
+    el.stageMeta.textContent = curStudent.cls + " · 序號 " + curStudent.seq +
+      (cands[0].spare ? " · 抽預備機" : " · 按「停！」定格");
+    el.nextBtn.textContent = "停！";
+    el.nextBtn.classList.add("stop");
+    renderHangar(new Set(cands.map(c => c.key)), null, cands.length ? null : null);
+    renderRoster();
 
-    // 滾動：由快變慢
-    let delay = 55;
-    const spinEnd = 12 + Math.floor(Math.random() * 6);
-    for(let i = 0; i < spinEnd; i++){
-      el.reel.textContent = slotLabel(pick(cands)) || "預備";
+    spinTimer = setInterval(() => {
+      curCand = pick(curCands);
+      el.reel.textContent = slotLabel(curCand) || "預備";
+      renderHangar(new Set(curCands.map(c => c.key)), null, curCand.key);
+      tick();
+    }, 75);
+  }
+
+  async function stopSpin(){
+    if(!spinTimer) return;
+    clearInterval(spinTimer); spinTimer = null;
+    el.nextBtn.disabled = true;
+
+    // 收尾：再跳幾格，越跳越慢
+    let delay = 90;
+    for(let i = 0; i < 5; i++){
+      curCand = pick(curCands);
+      el.reel.textContent = slotLabel(curCand) || "預備";
+      renderHangar(new Set(curCands.map(c => c.key)), null, curCand.key);
       tick();
       await wait(delay);
-      if(i > spinEnd - 7) delay += 55;
+      delay += 85;
     }
 
+    const target = curCand || pick(curCands);
+    state.assign[target.key] = curStudent.seq;
     el.reel.textContent = slotLabel(target) || "預備";
-    state.assign[target.key] = student.seq;
     state.now = null;
     el.stage.classList.remove("live");
     el.stage.classList.add("hit");
-    el.stageMeta.textContent = student.name + " → " +
+    el.stageMeta.textContent = curStudent.name + " → " +
       (target.spare ? "預備機 " + (state.spareNo[target.key] || "") : target.no + " 號");
     fanfare();
 
     state.drawing = false;
     document.body.classList.remove("drawing");
+    el.nextBtn.classList.remove("stop");
+    el.nextBtn.disabled = false;
     save(); render(null, target.key);
 
     if(!waiting().length){
@@ -442,17 +467,25 @@
       el.stageMeta.textContent = "共 " + seatedSeqs().size + " 位對號完成";
       await wait(120); finale();
     }
-    return true;
+    curCand = null; curStudent = null; curCands = null;
   }
 
-  el.nextBtn.onclick = () => drawOne();
+  el.nextBtn.onclick = () => { if(spinTimer) stopSpin(); else startSpin(); };
+  window.addEventListener("keydown", e => {
+    if(e.code === "Space" && !e.target.matches("input")){
+      e.preventDefault();
+      if(spinTimer) stopSpin(); else if(!state.drawing) startSpin();
+    }
+  });
   el.clearBtn.onclick = () => {
+    if(spinTimer){ clearInterval(spinTimer); spinTimer = null; state.drawing = false;
+      document.body.classList.remove("drawing"); el.nextBtn.classList.remove("stop"); }
     if(state.drawing) return;
     state.assign = {}; state.armed = null; state.now = null;
     applyPinned(); save(); render();
     el.stage.className = "stage";
     el.stageName.textContent = "準備開始";
-    el.stageMeta.textContent = "按「抽下一位」，機號會滾動後定格";
+    el.stageMeta.textContent = "按「抽下一位」開始滾動，再按「停！」定格（也可用空白鍵）";
     el.reel.textContent = "––";
   };
   el.soundBtn.onclick = () => {
