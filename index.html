@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>無人機抽籤對號台</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+</head>
+<body>
+<style>
+  :root{
+    --sky:#eaf4ff;          /* 天空底 */
+    --sky-2:#d7e9fd;
+    --paper:#ffffff;
+    --ink:#11243b;
+    --ink-2:#4a627c;
+    --ink-3:#8ba0b6;
+    --line:#cfe1f5;
+    --blue:#1a72e8;         /* 主動作 */
+    --sun:#ffc53d;          /* 抽籤中 */
+    --sun-soft:#fff4d6;
+    --coral:#ff6a52;        /* 空位 / 請假 */
+    --coral-soft:#ffe8e3;
+    --mint:#12b886;         /* 已定案 */
+    --mint-soft:#dff7ee;
+    --shadow:0 2px 0 var(--line), 0 12px 28px -18px rgba(17,36,59,.5);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:
+      radial-gradient(1100px 480px at 12% -12%, #ffffff 0%, rgba(255,255,255,0) 62%),
+      var(--sky);
+    color:var(--ink);
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+    font-size:15px; line-height:1.65; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:24px 18px 72px; display:flex; flex-direction:column; gap:18px}
+
+  header{display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:12px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.14em; color:var(--ink-3)}
+  h1{
+    margin:2px 0 0; font-family:"Baloo 2","Noto Sans TC",sans-serif; font-weight:800;
+    font-size:clamp(26px,4vw,38px); line-height:1.15; letter-spacing:.01em; text-wrap:balance;
+  }
+  h1 .hl{
+    background:linear-gradient(transparent 62%, var(--sun) 62%, var(--sun) 92%, transparent 92%);
+    padding:0 2px;
+  }
+  .sub{color:var(--ink-2); font-size:13.5px; margin-top:2px}
+  .status{
+    font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-2);
+    display:flex; align-items:center; gap:7px; background:var(--paper);
+    border:1px solid var(--line); border-radius:999px; padding:5px 12px;
+  }
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--ink-3); flex:none}
+  .dot.live{background:var(--mint)}
+  .dot.off{background:var(--coral)}
+
+  .bar{display:flex; flex-wrap:wrap; align-items:center; gap:9px}
+  button, input{font:inherit}
+  .act{
+    cursor:pointer; border-radius:12px; padding:9px 16px; color:var(--ink);
+    border:1px solid var(--line); background:var(--paper); font-weight:500;
+    box-shadow:0 2px 0 var(--line); transition:transform .1s, box-shadow .1s;
+  }
+  .act:hover{transform:translateY(-1px)}
+  .act:active{transform:translateY(1px); box-shadow:none}
+  .act.primary{
+    background:var(--blue); border-color:var(--blue); color:#fff; font-weight:700;
+    box-shadow:0 3px 0 #0f56b4; padding:10px 22px;
+  }
+  .act.primary:active{box-shadow:0 1px 0 #0f56b4}
+  .act:disabled{opacity:.5; cursor:not-allowed; transform:none}
+  .spacer{flex:1}
+  :is(button,input,.slot,.chip):focus-visible{outline:3px solid var(--sun); outline-offset:2px}
+
+  .counts{
+    display:flex; gap:14px; font-family:"IBM Plex Mono",monospace; font-size:12.5px;
+    color:var(--ink-2); align-items:center; flex-wrap:wrap;
+  }
+  .counts b{color:var(--ink); font-size:15px}
+
+  /* ---------- 機位 ---------- */
+  .hangar{display:grid; grid-template-columns:repeat(auto-fill,minmax(152px,1fr)); gap:11px}
+  .slot{
+    position:relative; text-align:left; cursor:pointer; background:var(--paper);
+    border:1.5px solid var(--line); border-radius:16px; padding:12px 13px 13px;
+    display:flex; flex-direction:column; gap:9px; box-shadow:var(--shadow);
+    transition:transform .12s, border-color .12s;
+  }
+  .slot:hover{transform:translateY(-2px)}
+  .slot .tag{
+    font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.12em;
+    color:var(--ink-3); display:flex; justify-content:space-between; align-items:center;
+  }
+  .slot .no{
+    font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:34px; line-height:1;
+    letter-spacing:-.03em; font-variant-numeric:tabular-nums; color:var(--ink);
+  }
+  .slot .who{min-height:44px; display:flex; flex-direction:column; justify-content:flex-end; gap:1px}
+  .slot .name{font-weight:700; font-size:17px; letter-spacing:.01em}
+  .slot .meta{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-3)}
+  .slot.filled{border-color:var(--mint); background:linear-gradient(var(--paper),var(--mint-soft))}
+  .slot.filled .tag{color:var(--mint)}
+  .slot.empty .name{color:var(--coral); font-weight:500; font-size:15px}
+  .slot.armed{border-color:var(--blue); box-shadow:0 0 0 3px rgba(26,114,232,.2), var(--shadow)}
+  .slot.rolling{border-color:var(--sun); background:linear-gradient(var(--paper),var(--sun-soft))}
+  .slot.rolling .name{color:var(--ink-2); font-weight:500}
+  .slot.rolling .tag{color:#c98f00}
+  .slot.pop{animation:pop .45s cubic-bezier(.2,1.5,.4,1)}
+  @keyframes pop{
+    0%{transform:scale(.82) rotate(-2deg)}
+    60%{transform:scale(1.06) rotate(1deg)}
+    100%{transform:scale(1)}
+  }
+  .slot.spare{border-style:dashed}
+  .slot.spare .no{color:var(--ink-2)}
+  .spareInput{
+    width:100%; border:none; border-bottom:2px dashed var(--line); background:transparent;
+    font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:30px; color:var(--ink);
+    padding:0 0 2px; letter-spacing:-.03em;
+  }
+  .spareInput::placeholder{color:var(--ink-3)}
+  .drawing .slot{cursor:default}
+
+  /* ---------- 名單 ---------- */
+  .panel{
+    background:var(--paper); border:1.5px solid var(--line); border-radius:16px;
+    padding:14px 16px; display:flex; flex-direction:column; gap:11px; box-shadow:var(--shadow);
+  }
+  .panel h2{
+    margin:0; font-family:"Baloo 2","Noto Sans TC",sans-serif; font-size:17px; font-weight:700;
+    display:flex; align-items:baseline; gap:9px;
+  }
+  .panel h2 em{font-style:normal; font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-3)}
+  .hint{color:var(--ink-3); font-size:12.5px}
+  .chips{display:flex; flex-wrap:wrap; gap:7px}
+  .chip{
+    cursor:pointer; border-radius:999px; padding:5px 13px 5px 7px; color:var(--ink);
+    border:1.5px solid var(--line); background:var(--paper);
+    display:flex; align-items:center; gap:8px; font-weight:500;
+  }
+  .chip .seq{
+    font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-2);
+    background:var(--sky); border-radius:999px; padding:1px 7px; min-width:26px; text-align:center;
+  }
+  .chip:hover{border-color:var(--blue)}
+  .chip.absent{background:var(--coral-soft); border-color:var(--coral); color:#a33421; text-decoration:line-through}
+  .chip.seated{border-color:var(--mint); background:var(--mint-soft)}
+  .pin{color:#b06a00; background:var(--sun-soft); border-radius:999px; padding:0 7px; font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.06em}
+  .slot .tag .pin{font-weight:600}
+  .chip.pick{border-color:var(--blue); box-shadow:0 0 0 3px rgba(26,114,232,.18)}
+  footer{color:var(--ink-3); font-size:12px; text-align:center}
+  @media (prefers-reduced-motion: reduce){
+    .slot.pop{animation:none}
+    .act:hover,.slot:hover{transform:none}
+  }
+  @media print{
+    .bar,.hint,footer,.status,#rosterPanel{display:none}
+    body{background:#fff}
+    .slot{box-shadow:none}
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">民富國小 115 學年上學期 · AI 無人機足球</div>
+      <h1>無人機<span class="hl">抽籤對號</span>台</h1>
+      <div class="sub">第一堂抽一次，抽完就是整學期的機號。之後仍可手動微調。</div>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">連線中…</span></div>
+  </header>
+
+  <div class="bar">
+    <button class="act primary" id="drawBtn">開始抽籤</button>
+    <button class="act" id="clearBtn">清空</button>
+    <span class="spacer"></span>
+    <div class="counts">
+      <span>出席 <b id="cPresent">–</b></span>
+      <span>機位 <b id="cSlots">–</b></span>
+      <span>已對號 <b id="cSeated">–</b></span>
+    </div>
+    <button class="act" id="csvBtn">匯出 CSV</button>
+    <button class="act" id="printBtn">列印</button>
+  </div>
+
+  <div class="hangar" id="hangar"></div>
+
+  <div class="panel" id="rosterPanel">
+    <h2>學生名單 <em id="rosterCount"></em></h2>
+    <div class="chips" id="roster"></div>
+    <div class="hint">點名字可切換 <b>出席 / 請假</b>（請假的不參加抽籤）。鍾宇硯固定使用預備機，不進主機抽籤。手動指派：先點機位，再點學生。</div>
+  </div>
+
+  <footer>抽籤結果會存在這個頁面，關掉再打開仍在。</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const MAIN = [58,59,60,61,62,63,64,65,70,94,95,96,97,98];
+  const SLOTS = MAIN.map(n => ({ key:"d"+n, no:String(n), spare:false }))
+    .concat([{key:"s1", no:"", spare:true}, {key:"s2", no:"", spare:true}]);
+
+  const STUDENTS = [
+    {seq:1, cls:"304", name:"蕭豋翰"},  {seq:2, cls:"610", name:"楊苡禾"},
+    {seq:3, cls:"506", name:"楊宸豪"},  {seq:4, cls:"310", name:"林克軒"},
+    {seq:5, cls:"610", name:"劉軒廷"},  {seq:6, cls:"508", name:"楊翊僑"},
+    {seq:7, cls:"303", name:"楊軒凱"},  {seq:8, cls:"510", name:"陳亮"},
+    {seq:9, cls:"607", name:"楊景閎"},  {seq:10, cls:"410", name:"郭承晏"},
+    {seq:11, cls:"309", name:"鄭開駿"}, {seq:12, cls:"302", name:"許煒丞"},
+    {seq:13, cls:"407", name:"陳奕瑋"}, {seq:14, cls:"502", name:"許桓與"},
+    {seq:15, cls:"406", name:"鍾宇硯"}, {seq:16, cls:"311", name:"張碩"}
+  ];
+  const byId = {};
+  STUDENTS.forEach(s => byId[s.seq] = s);
+
+  const state = {
+    assign: {},                 // slotKey -> seq
+    absent: { 16: true },       // 張碩預設請假
+    pinned: { 15: "s1" },       // 鍾宇硯最後報名，固定使用預備機
+    spareNo: { s1:"", s2:"" },
+    armed: null,
+    drawing: false,
+    db: null
+  };
+
+  const $ = id => document.getElementById(id);
+  const el = {
+    hangar:$("hangar"), roster:$("roster"), rosterCount:$("rosterCount"),
+    dot:$("dot"), statusText:$("statusText"), drawBtn:$("drawBtn"),
+    cPresent:$("cPresent"), cSlots:$("cSlots"), cSeated:$("cSeated")
+  };
+
+  const present = () => STUDENTS.filter(s => !state.absent[s.seq]);
+  const seatedSeqs = () => new Set(Object.values(state.assign).map(Number));
+  const slotLabel = sl => sl.spare ? (state.spareNo[sl.key] || "預備") : sl.no;
+
+  /* ---------- 保存 ---------- */
+  function snapshotBody(){
+    return { assign: state.assign, absent: state.absent, spareNo: state.spareNo, pinned: state.pinned,
+             updatedAt: new Date().toISOString() };
+  }
+  function save(){
+    try{ localStorage.setItem("droneDraw2", JSON.stringify(snapshotBody())); }catch(e){}
+    if(state.db){
+      state.db.doc("draw/term").set(snapshotBody())
+        .catch(() => setStatus(false, "暫時無法保存"));
+    }
+  }
+  function setStatus(live, text){
+    el.dot.className = "dot " + (live ? "live" : "off");
+    el.statusText.textContent = text;
+  }
+  function load(body){
+    if(!body) return;
+    state.assign = body.assign || {};
+    state.absent = body.absent || {};
+    state.spareNo = Object.assign({s1:"", s2:""}, body.spareNo || {});
+    if(body.pinned) state.pinned = body.pinned;
+    applyPinned();
+  }
+
+  function pinnedSlotOf(seq){ return state.pinned[seq] || null; }
+  function pinnedSeqOf(key){
+    const hit = Object.keys(state.pinned).find(q => state.pinned[q] === key);
+    return hit ? Number(hit) : null;
+  }
+  function applyPinned(){
+    Object.keys(state.pinned).forEach(q => {
+      const seq = Number(q), key = state.pinned[q];
+      if(state.absent[seq]) return;
+      Object.keys(state.assign).forEach(k => {
+        if(Number(state.assign[k]) === seq && k !== key) delete state.assign[k];
+      });
+      state.assign[key] = seq;
+    });
+  }
+  try{ load(JSON.parse(localStorage.getItem("droneDraw2"))); }catch(e){}
+
+  /* ---------- 畫面 ---------- */
+  function slotHTML(sl, seq, rollingName){
+    const s = seq ? byId[seq] : null;
+    const noPart = sl.spare
+      ? '<input class="spareInput" value="' + (state.spareNo[sl.key] || "") + '" placeholder="編號" ' +
+        'maxlength="4" data-spare="' + sl.key + '" aria-label="預備機編號">'
+      : '<span class="no">' + sl.no + '</span>';
+    const who = rollingName
+      ? '<span class="name">' + rollingName + '</span><span class="meta">抽籤中…</span>'
+      : (s ? '<span class="name">' + s.name + '</span><span class="meta">' + s.cls + ' · 序號 ' + s.seq + '</span>'
+           : '<span class="name">尚未對號</span><span class="meta">點此指派</span>');
+    const pinnedHere = pinnedSeqOf(sl.key);
+    return '<div class="tag"><span>' + (sl.spare ? "預備機" : "機號") + '</span>' +
+           (pinnedHere && !state.absent[pinnedHere] ? '<span class="pin">固定</span>' : (s ? '<span>✓</span>' : '')) +
+           '</div>' + noPart +
+           '<div class="who">' + who + '</div>';
+  }
+
+  function renderHangar(rolling, popKeys){
+    el.hangar.innerHTML = "";
+    SLOTS.forEach(sl => {
+      const seq = state.assign[sl.key];
+      const isRolling = rolling && rolling.has(sl.key);
+      const d = document.createElement("div");
+      d.className = "slot" + (sl.spare ? " spare" : "") +
+        (isRolling ? " rolling" : (seq ? " filled" : " empty")) +
+        (state.armed === sl.key ? " armed" : "") +
+        (popKeys && popKeys.has(sl.key) ? " pop" : "");
+      d.tabIndex = 0;
+      d.innerHTML = slotHTML(sl, isRolling ? null : seq, isRolling ? rollName() : null);
+      d.onclick = ev => {
+        if(state.drawing || ev.target.classList.contains("spareInput")) return;
+        const pinHere = pinnedSeqOf(sl.key);
+        if(pinHere && !state.absent[pinHere]) return;
+        if(state.assign[sl.key]){ delete state.assign[sl.key]; state.armed = null; save(); render(); }
+        else { state.armed = (state.armed === sl.key ? null : sl.key); render(); }
+      };
+      el.hangar.appendChild(d);
+    });
+    el.hangar.querySelectorAll(".spareInput").forEach(inp => {
+      inp.oninput = () => { state.spareNo[inp.dataset.spare] = inp.value.trim(); save(); };
+    });
+  }
+
+  function rollName(){
+    const p = present();
+    return p.length ? p[Math.floor(Math.random() * p.length)].name : "…";
+  }
+
+  function renderRoster(){
+    const seated = seatedSeqs();
+    el.roster.innerHTML = "";
+    el.rosterCount.textContent = present().length + " 人出席 / 共 " + STUDENTS.length + " 人";
+    STUDENTS.forEach(s => {
+      const absent = !!state.absent[s.seq];
+      const c = document.createElement("button");
+      c.className = "chip" + (absent ? " absent" : (seated.has(s.seq) ? " seated" : "")) +
+                    (state.armed && !absent && !seated.has(s.seq) ? " pick" : "");
+      c.innerHTML = '<span class="seq">' + s.seq + '</span>' + s.name +
+                    '<span class="seq">' + s.cls + '</span>' +
+                    (pinnedSlotOf(s.seq) ? '<span class="seq pin">預備機</span>' : '');
+      c.onclick = () => {
+        if(state.drawing) return;
+        if(pinnedSlotOf(s.seq) && !absent && state.armed){ state.armed = null; render(); return; }
+        if(state.armed && !absent && !seated.has(s.seq)){
+          state.assign[state.armed] = s.seq;
+          state.armed = null; save(); render();
+          return;
+        }
+        if(absent){ delete state.absent[s.seq]; }
+        else {
+          state.absent[s.seq] = true;
+          Object.keys(state.assign).forEach(k => { if(Number(state.assign[k]) === s.seq) delete state.assign[k]; });
+        }
+        save(); render();
+      };
+      el.roster.appendChild(c);
+    });
+  }
+
+  function renderCounts(){
+    el.cPresent.textContent = present().length;
+    el.cSlots.textContent = SLOTS.length;
+    el.cSeated.textContent = seatedSeqs().size;
+  }
+
+  function render(rolling, popKeys){
+    renderHangar(rolling, popKeys);
+    renderRoster();
+    renderCounts();
+  }
+
+  /* ---------- 抽籤（有延遲的緊張感） ---------- */
+  function shuffle(a){
+    for(let i = a.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  async function draw(){
+    const pool = shuffle(present().filter(s => !pinnedSlotOf(s.seq)));
+    state.drawing = true;
+    state.armed = null;
+    state.assign = {};
+    applyPinned();
+    document.body.classList.add("drawing");
+    el.drawBtn.disabled = true;
+    $("clearBtn").disabled = true;
+
+    const taken = new Set(Object.keys(state.assign));
+    const order = shuffle(SLOTS.filter(sl => !taken.has(sl.key))).slice(0, pool.length);
+    if(!order.length){ state.drawing = false; el.drawBtn.disabled = false; render(); return; }
+    const rolling = new Set(order.map(s => s.key));
+    render(rolling);
+
+    const spin = setInterval(() => render(rolling), 90);
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    await wait(900);
+
+    for(let i = 0; i < order.length; i++){
+      const sl = order[i];
+      state.assign[sl.key] = pool[i].seq;
+      rolling.delete(sl.key);
+      el.drawBtn.textContent = "抽籤中… " + (i + 1) + " / " + order.length;
+      render(rolling, new Set([sl.key]));
+      await wait(i < 3 ? 520 : (i > order.length - 4 ? 700 : 300));
+    }
+
+    clearInterval(spin);
+    state.drawing = false;
+    document.body.classList.remove("drawing");
+    el.drawBtn.disabled = false;
+    $("clearBtn").disabled = false;
+    el.drawBtn.textContent = "重新抽籤";
+    save();
+    render();
+  }
+
+  el.drawBtn.onclick = draw;
+  $("clearBtn").onclick = () => {
+    state.assign = {}; state.armed = null; applyPinned(); save(); render();
+    el.drawBtn.textContent = "開始抽籤";
+  };
+  $("printBtn").onclick = () => window.print();
+  $("csvBtn").onclick = async () => {
+    let csv = "﻿機號,類別,學生序號,班級,姓名\n";
+    SLOTS.forEach(sl => {
+      const s = byId[state.assign[sl.key]];
+      const pinHere = pinnedSeqOf(sl.key);
+      csv += [slotLabel(sl), sl.spare ? "預備機" : "主機",
+              s ? s.seq : "", s ? s.cls : "", s ? s.name : "（空）",
+              (pinHere && s && Number(s.seq) === pinHere) ? "固定" : ""].join(",") + "\n";
+    });
+    STUDENTS.filter(s => state.absent[s.seq])
+      .forEach(s => { csv += ["", "請假", s.seq, s.cls, s.name, ""].join(",") + "\n"; });
+    const dl = await window.claude.use("downloads").catch(() => null);
+    if(dl){ try{ await dl.save({ filename:"無人機對號表.csv", data:csv }); }catch(e){} }
+    else{
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"}));
+      a.download = "無人機對號表.csv"; a.click();
+    }
+  };
+
+  applyPinned();
+  render();
+  if(Object.keys(state.assign).length) el.drawBtn.textContent = "重新抽籤";
+  setStatus(false, "本機暫存");
+
+  (async function(){
+    let db = null;
+    try{ db = await window.claude.use("db"); }catch(e){}
+    if(!db){ setStatus(false, "本機暫存（此裝置）"); return; }
+    state.db = db;
+    setStatus(true, "已保存");
+    db.doc("draw/term").onSnapshot(
+      snap => {
+        if(state.drawing || !snap.exists) return;
+        load(snap.data());
+        render();
+        if(Object.keys(state.assign).length) el.drawBtn.textContent = "重新抽籤";
+      },
+      () => setStatus(false, "同步中斷，改用本機暫存")
+    );
+  })();
+})();
+</script>
+
+</body>
+</html>
