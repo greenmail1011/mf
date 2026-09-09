@@ -162,7 +162,7 @@
     <div>
       <div class="eyebrow">民富國小 115 學年上學期 · AI 無人機足球</div>
       <h1>無人機<span class="hl">抽籤對號</span>台</h1>
-      <div class="sub">按一下開始滾號碼，什麼時候停由你決定。編號機先發完，才會用到預備機。</div>
+      <div class="sub">依名單序號一位一位上台（可切成隨機）。按一下開始滾號碼，什麼時候停由你決定。</div>
     </div>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">連線中…</span></div>
   </header>
@@ -181,6 +181,7 @@
 
   <div class="bar">
     <button class="act primary" id="nextBtn">抽下一位</button>
+    <button class="act" id="orderBtn">順序：名單</button>
     <button class="act" id="clearBtn">重新開始</button>
     <button class="act" id="soundBtn" aria-pressed="true">🔊 音效開</button>
     <span class="spacer"></span>
@@ -198,7 +199,7 @@
   <div class="panel" id="rosterPanel">
     <h2>學生名單 <em id="rosterCount"></em></h2>
     <div class="chips" id="roster"></div>
-    <div class="hint">點名字可切換 <b>出席 / 請假</b>（請假的不參加抽籤）。鍾宇硯固定使用預備機。手動指派：先點機位，再點學生。</div>
+    <div class="hint">點名字可切換 <b>出席 / 請假</b>（請假的不參加抽籤）。鍾宇硯固定使用預備機。手動指派：先點機位，再點學生。名單順序＝依序號 1→16。</div>
   </div>
 
   <footer>抽籤結果會存在這個頁面，關掉再打開仍在。</footer>
@@ -230,7 +231,8 @@
     absent: { 16: true },        // 張碩預設請假
     pinned: { 15: "s1" },        // 鍾宇硯固定用預備機
     spareNo: { s1:"", s2:"" },
-    armed: null, drawing: false, sound: true, now: null, db: null
+    armed: null, drawing: false, sound: true, now: null, db: null,
+    order: "list"               // list = 依名單序號；random = 隨機叫人
   };
 
   const $ = id => document.getElementById(id);
@@ -238,7 +240,7 @@
     hangar:$("hangar"), roster:$("roster"), rosterCount:$("rosterCount"),
     dot:$("dot"), statusText:$("statusText"),
     stage:$("stage"), stageName:$("stageName"), stageMeta:$("stageMeta"), reel:$("reel"),
-    nextBtn:$("nextBtn"), clearBtn:$("clearBtn"), soundBtn:$("soundBtn"),
+    nextBtn:$("nextBtn"), clearBtn:$("clearBtn"), soundBtn:$("soundBtn"), orderBtn:$("orderBtn"),
     cLeft:$("cLeft"), cSeated:$("cSeated"), cFree:$("cFree")
   };
 
@@ -389,7 +391,9 @@
     el.cFree.textContent = freeSlots().length;
     if(spinTimer) return;
     el.nextBtn.disabled = state.drawing || left === 0 || freeSlots().length === 0;
-    el.nextBtn.textContent = left === 0 ? "全部抽完了" : "抽下一位";
+    const nxt = state.order === "list" ? waiting()[0] : null;
+    el.nextBtn.textContent = left === 0 ? "全部抽完了"
+      : (nxt ? "抽下一位：" + nxt.name : "抽下一位");
   }
 
   function render(candKeys, popKey){
@@ -408,7 +412,7 @@
 
     state.drawing = true;
     document.body.classList.add("drawing");
-    curStudent = pick(pool);
+    curStudent = (state.order === "list") ? pool[0] : pick(pool);
     curCands = cands;
     state.now = curStudent.seq;
 
@@ -488,6 +492,13 @@
     el.stageMeta.textContent = "按「抽下一位」開始滾動，再按「停！」定格（也可用空白鍵）";
     el.reel.textContent = "––";
   };
+  el.orderBtn.onclick = () => {
+    if(state.drawing) return;
+    state.order = state.order === "list" ? "random" : "list";
+    el.orderBtn.textContent = state.order === "list" ? "順序：名單" : "順序：隨機";
+    try{ localStorage.setItem("droneDrawOrder", state.order); }catch(e){}
+    renderCounts();
+  };
   el.soundBtn.onclick = () => {
     state.sound = !state.sound;
     el.soundBtn.setAttribute("aria-pressed", String(state.sound));
@@ -514,6 +525,8 @@
     }
   };
 
+  try{ state.order = localStorage.getItem("droneDrawOrder") || "list"; }catch(e){}
+  el.orderBtn.textContent = state.order === "list" ? "順序：名單" : "順序：隨機";
   applyPinned();
   render();
   if(!waiting().length && seatedSeqs().size){
