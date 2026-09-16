@@ -192,6 +192,7 @@
   <div class="bar">
     <button class="act primary" id="nextBtn">抽下一位</button>
     <button class="act" id="orderBtn">順序：名單</button>
+    <button class="act" id="undoBtn" disabled>↶ 復原</button>
     <button class="act" id="clearBtn">重新開始</button>
     <button class="act" id="soundBtn" aria-pressed="true">🔊 音效開</button>
     <span class="spacer"></span>
@@ -253,7 +254,7 @@
     rosterHint:$("rosterHint"), eyebrow:$("eyebrow"),
     dot:$("dot"), statusText:$("statusText"),
     stage:$("stage"), stageName:$("stageName"), stageMeta:$("stageMeta"), reel:$("reel"),
-    nextBtn:$("nextBtn"), clearBtn:$("clearBtn"), soundBtn:$("soundBtn"), orderBtn:$("orderBtn"),
+    nextBtn:$("nextBtn"), clearBtn:$("clearBtn"), undoBtn:$("undoBtn"), soundBtn:$("soundBtn"), orderBtn:$("orderBtn"),
     cLeft:$("cLeft"), cSeated:$("cSeated"), cFree:$("cFree")
   };
 
@@ -328,6 +329,32 @@
     });
   }
 
+  /* ---------- 復原（誤按救回） ---------- */
+  let history = [];
+  function snapshot(){
+    return JSON.parse(JSON.stringify({
+      assign:state.assign, absent:state.absent, pinned:state.pinned, spareNo:state.spareNo
+    }));
+  }
+  function pushHistory(label){
+    history.push({ label: label || "上一步", data: snapshot() });
+    if(history.length > 40) history.shift();
+    updateUndo();
+  }
+  function updateUndo(){
+    el.undoBtn.disabled = state.drawing || !history.length;
+    el.undoBtn.textContent = history.length ? "↶ 復原" + (history[history.length-1].label ? "：" + history[history.length-1].label : "") : "↶ 復原";
+  }
+  function undo(){
+    if(state.drawing || !history.length) return;
+    const prev = history.pop().data;
+    state.assign = prev.assign; state.absent = prev.absent;
+    state.pinned = prev.pinned; state.spareNo = prev.spareNo;
+    state.armed = null; state.now = null;
+    save(); render(); resetStage(); updateUndo();
+    beep(520, 0.07, "triangle", 0.06);
+  }
+
   let unsub = null;
   function selectSchool(key){
     if(spinTimer) return;
@@ -350,9 +377,10 @@
     }catch(e){}
     try{ localStorage.setItem("droneDrawSchool", key); }catch(e){}
     applyPinned();
+    history = [];
     el.eyebrow.textContent = CFG.name + " · 115 學年上學期 · AI 足球無人機課後社團";
     el.rosterHint.innerHTML = "點名字可切換 <b>出席 / 請假</b>（請假的不參加抽籤）。" + CFG.note +
-      " 手動指派：先點機位，再點學生。";
+      " 手動指派：先點機位，再點學生。按錯了可用「↶ 復原」（或 Ctrl/⌘+Z）救回。";
     resetStage();
     render();
     if(unsub){ unsub(); unsub = null; }
@@ -410,7 +438,11 @@
       d.onclick = ev => {
         if(state.drawing || ev.target.classList.contains("spareInput")) return;
         if(pinHere && !state.absent[pinHere]) return;
-        if(state.assign[sl.key]){ delete state.assign[sl.key]; state.armed = null; save(); render(); }
+        if(state.assign[sl.key]){
+          const who = byId[state.assign[sl.key]];
+          pushHistory("收回 " + (who ? who.name : ""));
+          delete state.assign[sl.key]; state.armed = null; save(); render();
+        }
         else { state.armed = (state.armed === sl.key ? null : sl.key); render(); }
       };
       el.hangar.appendChild(d);
@@ -437,8 +469,10 @@
         if(state.drawing) return;
         if(pinnedSlotOf(s.seq) && !absent){ state.armed = null; render(); return; }
         if(state.armed && !absent && !seated.has(s.seq)){
+          pushHistory("指派 " + s.name);
           state.assign[state.armed] = s.seq; state.armed = null; save(); render(); return;
         }
+        pushHistory((absent ? "改出席 " : "改請假 ") + s.name);
         if(absent) delete state.absent[s.seq];
         else{
           state.absent[s.seq] = true;
@@ -462,7 +496,7 @@
   }
 
   function render(popKey, spotKey){
-    renderSchools(); renderHangar(popKey, spotKey); renderRoster(); renderCounts();
+    renderSchools(); renderHangar(popKey, spotKey); renderRoster(); renderCounts(); updateUndo();
   }
 
   const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -513,6 +547,7 @@
     }
 
     const target = curCand || pick(curCands);
+    pushHistory("抽出 " + curStudent.name);
     state.assign[target.key] = curStudent.seq;
     el.reel.textContent = slotLabel(target) || "預備";
     state.now = null;
@@ -538,11 +573,13 @@
 
   el.nextBtn.onclick = () => { if(spinTimer) stopSpin(); else startSpin(); };
   window.addEventListener("keydown", e => {
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); return; }
     if(e.code === "Space" && !e.target.matches("input")){
       e.preventDefault();
       if(spinTimer) stopSpin(); else if(!state.drawing) startSpin();
     }
   });
+  el.undoBtn.onclick = undo;
   el.orderBtn.onclick = () => {
     if(state.drawing) return;
     state.order = state.order === "list" ? "random" : "list";
@@ -555,6 +592,7 @@
       clearInterval(spinTimer); spinTimer = null; state.drawing = false;
       document.body.classList.remove("drawing"); el.nextBtn.classList.remove("stop");
     }
+    pushHistory("清空全部");
     state.assign = {}; state.armed = null; state.now = null;
     applyPinned(); save(); render(); resetStage();
   };
