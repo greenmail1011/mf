@@ -43,6 +43,18 @@
   .dot{width:8px; height:8px; border-radius:50%; background:var(--ink-3); flex:none}
   .dot.live{background:var(--mint)} .dot.off{background:var(--coral)}
 
+  /* ---------- 學校切換 ---------- */
+  .schools{display:flex; gap:8px; flex-wrap:wrap}
+  .school{
+    cursor:pointer; font:inherit; font-weight:700; padding:8px 18px; border-radius:999px;
+    border:1.5px solid var(--line); background:var(--paper); color:var(--ink-2);
+    display:flex; align-items:baseline; gap:8px;
+  }
+  .school small{font-family:"IBM Plex Mono",monospace; font-weight:500; font-size:11px; color:var(--ink-3)}
+  .school:hover{border-color:var(--blue)}
+  .school[aria-pressed="true"]{background:var(--blue); border-color:var(--blue); color:#fff}
+  .school[aria-pressed="true"] small{color:rgba(255,255,255,.75)}
+
   /* ---------- 抽籤舞台 ---------- */
   .stage{
     display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap;
@@ -51,10 +63,7 @@
   }
   .stage.live{border-color:var(--sun); background:linear-gradient(180deg,#fff, var(--sun-soft))}
   .stage.hit{border-color:var(--mint); background:linear-gradient(180deg,#fff, var(--mint-soft))}
-  .stageName{
-    font-family:"Baloo 2","Noto Sans TC",sans-serif; font-weight:800;
-    font-size:clamp(26px,4.6vw,40px); line-height:1.15;
-  }
+  .stageName{font-family:"Baloo 2","Noto Sans TC",sans-serif; font-weight:800; font-size:clamp(26px,4.6vw,40px); line-height:1.15}
   .stageMeta{color:var(--ink-2); font-size:13px; font-family:"IBM Plex Mono",monospace}
   .reel{
     font-family:"IBM Plex Mono",monospace; font-weight:700; font-variant-numeric:tabular-nums;
@@ -79,7 +88,6 @@
   .act.primary:active{box-shadow:0 1px 0 #0f56b4}
   .act.primary.stop{background:var(--coral); border-color:var(--coral); box-shadow:0 3px 0 #cc4530; animation:breathe 1s ease-in-out infinite}
   @keyframes breathe{0%,100%{transform:scale(1)} 50%{transform:scale(1.04)}}
-  .slot.spot{border-color:var(--sun); background:linear-gradient(var(--paper),var(--sun-soft)); box-shadow:0 0 0 3px rgba(255,197,61,.45), var(--shadow)}
   .act:disabled{opacity:.5; cursor:not-allowed; transform:none}
   .spacer{flex:1}
   :is(button,input,.slot,.chip):focus-visible{outline:3px solid var(--sun); outline-offset:2px}
@@ -110,7 +118,7 @@
   .slot.filled .tag{color:var(--mint)}
   .slot.empty .name{color:var(--coral); font-weight:500; font-size:15px}
   .slot.armed{border-color:var(--blue); box-shadow:0 0 0 3px rgba(26,114,232,.2), var(--shadow)}
-  .slot.cand{border-color:var(--sun); background:linear-gradient(var(--paper),var(--sun-soft))}
+  .slot.spot{border-color:var(--sun); background:linear-gradient(var(--paper),var(--sun-soft)); box-shadow:0 0 0 3px rgba(255,197,61,.45), var(--shadow)}
   .slot.pop{animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
   @keyframes pop{0%{transform:scale(.8) rotate(-3deg)} 60%{transform:scale(1.07) rotate(1.5deg)} 100%{transform:scale(1)}}
   .slot.spare{border-style:dashed}
@@ -152,7 +160,7 @@
     .act:hover,.slot:hover{transform:none}
   }
   @media print{
-    .bar,.hint,footer,.status,.stage,#rosterPanel{display:none}
+    .bar,.hint,footer,.status,.stage,.schools,#rosterPanel{display:none}
     body{background:#fff} .slot{box-shadow:none}
   }
 </style>
@@ -160,12 +168,14 @@
 <div class="wrap">
   <header>
     <div>
-      <div class="eyebrow">民富國小 115 學年上學期 · AI 無人機足球</div>
+      <div class="eyebrow" id="eyebrow">115 學年上學期 · AI 足球無人機課後社團</div>
       <h1>無人機<span class="hl">抽籤對號</span>台</h1>
-      <div class="sub">依名單序號一位一位上台（可切成隨機）。按一下開始滾號碼，什麼時候停由你決定。</div>
+      <div class="sub" id="sub">依名單序號一位一位上台（可切成隨機）。按一下開始滾號碼，什麼時候停由你決定。</div>
     </div>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">連線中…</span></div>
   </header>
+
+  <div class="schools" id="schools" role="group" aria-label="選擇學校"></div>
 
   <div class="stage" id="stage">
     <div>
@@ -199,52 +209,68 @@
   <div class="panel" id="rosterPanel">
     <h2>學生名單 <em id="rosterCount"></em></h2>
     <div class="chips" id="roster"></div>
-    <div class="hint">點名字可切換 <b>出席 / 請假</b>（請假的不參加抽籤）。鍾宇硯固定使用預備機。手動指派：先點機位，再點學生。名單順序＝依序號 1→16。</div>
+    <div class="hint" id="rosterHint"></div>
   </div>
 
-  <footer>抽籤結果會存在這個頁面，關掉再打開仍在。</footer>
+  <footer>每間學校各自保存抽籤結果，關掉再打開仍在。</footer>
 </div>
 
 <script>
 (function(){
   "use strict";
 
-  const MAIN = [58,59,60,61,62,63,64,65,70,94,95,96,97,98];
-  const SLOTS = MAIN.map(n => ({ key:"d"+n, no:String(n), spare:false }))
-    .concat([{ key:"s1", no:"", spare:true }, { key:"s2", no:"", spare:true }]);
-
-  const STUDENTS = [
-    {seq:1, cls:"304", name:"蕭豋翰"},  {seq:2, cls:"610", name:"楊苡禾"},
-    {seq:3, cls:"506", name:"楊宸豪"},  {seq:4, cls:"310", name:"林克軒"},
-    {seq:5, cls:"610", name:"劉軒廷"},  {seq:6, cls:"508", name:"楊翊僑"},
-    {seq:7, cls:"303", name:"楊軒凱"},  {seq:8, cls:"510", name:"陳亮"},
-    {seq:9, cls:"607", name:"楊景閎"},  {seq:10, cls:"410", name:"郭承晏"},
-    {seq:11, cls:"309", name:"鄭開駿"}, {seq:12, cls:"302", name:"許煒丞"},
-    {seq:13, cls:"407", name:"陳奕瑋"}, {seq:14, cls:"502", name:"許桓與"},
-    {seq:15, cls:"406", name:"鍾宇硯"}, {seq:16, cls:"311", name:"張碩"}
-  ];
-  const byId = {}; STUDENTS.forEach(s => byId[s.seq] = s);
-  const slotByKey = {}; SLOTS.forEach(sl => slotByKey[sl.key] = sl);
-
-  const state = {
-    assign: {},                  // slotKey -> seq
-    absent: { 16: true },        // 張碩預設請假
-    pinned: { 15: "s1" },        // 鍾宇硯固定用預備機
-    spareNo: { s1:"", s2:"" },
-    armed: null, drawing: false, sound: true, now: null, db: null,
-    order: "list"               // list = 依名單序號；random = 隨機叫人
+  const SCHOOLS = {
+    minfu: {
+      name:"民富國小", short:"民富", main:[58,59,60,61,62,63,64,65,70,94,95,96,97,98], spares:2,
+      students:[
+        {seq:1, cls:"304", name:"蕭豋翰"},  {seq:2, cls:"610", name:"楊苡禾"},
+        {seq:3, cls:"506", name:"楊宸豪"},  {seq:4, cls:"310", name:"林克軒"},
+        {seq:5, cls:"610", name:"劉軒廷"},  {seq:6, cls:"508", name:"楊翊僑"},
+        {seq:7, cls:"303", name:"楊軒凱"},  {seq:8, cls:"510", name:"陳亮"},
+        {seq:9, cls:"607", name:"楊景閎"},  {seq:10, cls:"410", name:"郭承晏"},
+        {seq:11, cls:"309", name:"鄭開駿"}, {seq:12, cls:"302", name:"許煒丞"},
+        {seq:13, cls:"407", name:"陳奕瑋"}, {seq:14, cls:"502", name:"許桓與"},
+        {seq:15, cls:"406", name:"鍾宇硯"}, {seq:16, cls:"311", name:"張碩"}
+      ],
+      absent:{16:true}, pinned:{15:"s1"},
+      note:"鍾宇硯固定使用預備機；編號機先發完才會用到預備機。"
+    },
+    zhulian: {
+      name:"竹蓮國小", short:"竹蓮", main:[39,40,41,42], spares:0,
+      students:[
+        {seq:1, cls:"604", name:"鄒宇筑"}, {seq:2, cls:"502", name:"呂宜桐"},
+        {seq:3, cls:"401", name:"施禹辰"}, {seq:4, cls:"302", name:"葉君毅"},
+        {seq:5, cls:"401", name:"尤韋程"}
+      ],
+      absent:{1:true}, pinned:{},
+      note:"鄒宇筑後來改報名 3D，預設不參加；若要加入，點名字即可切回出席。"
+    }
   };
 
   const $ = id => document.getElementById(id);
   const el = {
-    hangar:$("hangar"), roster:$("roster"), rosterCount:$("rosterCount"),
+    schools:$("schools"), hangar:$("hangar"), roster:$("roster"), rosterCount:$("rosterCount"),
+    rosterHint:$("rosterHint"), eyebrow:$("eyebrow"),
     dot:$("dot"), statusText:$("statusText"),
     stage:$("stage"), stageName:$("stageName"), stageMeta:$("stageMeta"), reel:$("reel"),
     nextBtn:$("nextBtn"), clearBtn:$("clearBtn"), soundBtn:$("soundBtn"), orderBtn:$("orderBtn"),
     cLeft:$("cLeft"), cSeated:$("cSeated"), cFree:$("cFree")
   };
 
-  const present = () => STUDENTS.filter(s => !state.absent[s.seq]);
+  const state = {
+    school:"minfu", assign:{}, absent:{}, pinned:{}, spareNo:{},
+    armed:null, drawing:false, sound:true, now:null, order:"list", db:null
+  };
+  let CFG = null, SLOTS = [], byId = {};
+
+  function buildSlots(cfg){
+    const s = cfg.main.map(n => ({ key:"d"+n, no:String(n), spare:false }));
+    for(let i = 1; i <= cfg.spares; i++) s.push({ key:"s"+i, no:"", spare:true });
+    return s;
+  }
+
+  const students = () => CFG.students;
+  const present = () => students().filter(s => !state.absent[s.seq]);
   const seatedSeqs = () => new Set(Object.values(state.assign).map(Number));
   const slotLabel = sl => sl.spare ? (state.spareNo[sl.key] || "預備") : sl.no;
   const pinnedSlotOf = seq => state.pinned[seq] || null;
@@ -252,15 +278,10 @@
     const hit = Object.keys(state.pinned).find(q => state.pinned[q] === key);
     return hit ? Number(hit) : null;
   }
-  const waiting = () => {
-    const seated = seatedSeqs();
-    return present().filter(s => !seated.has(s.seq));
-  };
+  const waiting = () => { const st = seatedSeqs(); return present().filter(s => !st.has(s.seq)); };
   const freeSlots = () => SLOTS.filter(sl => !state.assign[sl.key]);
-  // 編號機優先，發完才用預備機
   function candidateSlots(){
-    const free = freeSlots();
-    const mains = free.filter(sl => !sl.spare);
+    const free = freeSlots(), mains = free.filter(sl => !sl.spare);
     return mains.length ? mains : free;
   }
 
@@ -280,19 +301,17 @@
     }catch(e){}
   }
   const tick = () => beep(1180, 0.03, "square", 0.035);
-  function fanfare(){
-    [[659,0],[880,0.09],[1319,0.19]].forEach(([f,d]) => beep(f, 0.28, "triangle", 0.11, d));
-  }
-  function finale(){
-    [523,659,784,1047,1319].forEach((f,i) => beep(f, 0.34, "triangle", 0.1, i * 0.11));
-  }
+  const fanfare = () => [[659,0],[880,.09],[1319,.19]].forEach(([f,d]) => beep(f, .28, "triangle", .11, d));
+  const finale = () => [523,659,784,1047,1319].forEach((f,i) => beep(f, .34, "triangle", .1, i * .11));
 
-  /* ---------- 保存 ---------- */
-  const body = () => ({ assign:state.assign, absent:state.absent, pinned:state.pinned,
-                        spareNo:state.spareNo, updatedAt:new Date().toISOString() });
+  /* ---------- 保存（每校一份） ---------- */
+  const lsKey = () => "droneDraw:" + state.school;
+  const docPath = () => "draw/" + state.school;
+  const body = () => ({ school:state.school, assign:state.assign, absent:state.absent,
+                        pinned:state.pinned, spareNo:state.spareNo, updatedAt:new Date().toISOString() });
   function save(){
-    try{ localStorage.setItem("droneDraw2", JSON.stringify(body())); }catch(e){}
-    if(state.db) state.db.doc("draw/term").set(body()).catch(() => setStatus(false, "暫時無法保存"));
+    try{ localStorage.setItem(lsKey(), JSON.stringify(body())); }catch(e){}
+    if(state.db) state.db.doc(docPath()).set(body()).catch(() => setStatus(false, "暫時無法保存"));
   }
   function setStatus(live, text){
     el.dot.className = "dot " + (live ? "live" : "off");
@@ -301,34 +320,81 @@
   function applyPinned(){
     Object.keys(state.pinned).forEach(q => {
       const seq = Number(q), key = state.pinned[q];
-      if(state.absent[seq]) return;
+      if(state.absent[seq] || !SLOTS.some(sl => sl.key === key)) return;
       Object.keys(state.assign).forEach(k => {
         if(Number(state.assign[k]) === seq && k !== key) delete state.assign[k];
       });
       state.assign[key] = seq;
     });
   }
-  function load(b){
-    if(!b) return;
-    state.assign = b.assign || {};
-    state.absent = b.absent || {};
-    state.spareNo = Object.assign({s1:"", s2:""}, b.spareNo || {});
-    if(b.pinned) state.pinned = b.pinned;
+
+  let unsub = null;
+  function selectSchool(key){
+    if(spinTimer) return;
+    state.school = key;
+    CFG = SCHOOLS[key];
+    SLOTS = buildSlots(CFG);
+    byId = {}; CFG.students.forEach(s => byId[s.seq] = s);
+    state.assign = {}; state.armed = null; state.now = null;
+    state.absent = Object.assign({}, CFG.absent);
+    state.pinned = Object.assign({}, CFG.pinned);
+    state.spareNo = {};
+    try{
+      const saved = JSON.parse(localStorage.getItem(lsKey()));
+      if(saved){
+        state.assign = saved.assign || {};
+        state.absent = saved.absent || {};
+        state.pinned = saved.pinned || {};
+        state.spareNo = saved.spareNo || {};
+      }
+    }catch(e){}
+    try{ localStorage.setItem("droneDrawSchool", key); }catch(e){}
     applyPinned();
+    el.eyebrow.textContent = CFG.name + " · 115 學年上學期 · AI 足球無人機課後社團";
+    el.rosterHint.innerHTML = "點名字可切換 <b>出席 / 請假</b>（請假的不參加抽籤）。" + CFG.note +
+      " 手動指派：先點機位，再點學生。";
+    resetStage();
+    render();
+    if(unsub){ unsub(); unsub = null; }
+    if(state.db) watch();
   }
-  try{ load(JSON.parse(localStorage.getItem("droneDraw2"))); }catch(e){}
+
+  function resetStage(){
+    el.stage.className = "stage";
+    el.reel.textContent = "––";
+    if(!waiting().length && seatedSeqs().size){
+      el.stage.classList.add("hit");
+      el.stageName.textContent = "抽籤完成";
+      el.stageMeta.textContent = "共 " + seatedSeqs().size + " 位對號完成";
+      el.reel.textContent = "✓";
+    } else {
+      el.stageName.textContent = "準備開始";
+      el.stageMeta.textContent = "按「抽下一位」開始滾動，再按「停！」定格（也可用空白鍵）";
+    }
+  }
 
   /* ---------- 畫面 ---------- */
-  function renderHangar(candKeys, popKey, spotKey){
+  function renderSchools(){
+    el.schools.innerHTML = "";
+    Object.keys(SCHOOLS).forEach(k => {
+      const c = SCHOOLS[k];
+      const b = document.createElement("button");
+      b.className = "school";
+      b.setAttribute("aria-pressed", String(k === state.school));
+      b.innerHTML = c.name + "<small>" + c.main.length + " 台 · " + c.students.length + " 人</small>";
+      b.onclick = () => selectSchool(k);
+      el.schools.appendChild(b);
+    });
+  }
+
+  function renderHangar(popKey, spotKey){
     el.hangar.innerHTML = "";
     SLOTS.forEach(sl => {
       const seq = state.assign[sl.key], s = seq ? byId[seq] : null;
       const pinHere = pinnedSeqOf(sl.key);
       const d = document.createElement("div");
       d.className = "slot" + (sl.spare ? " spare" : "") + (s ? " filled" : " empty") +
-        (state.armed === sl.key ? " armed" : "") +
-        (candKeys && candKeys.has(sl.key) ? " cand" : "") +
-        (popKey === sl.key ? " pop" : "") +
+        (state.armed === sl.key ? " armed" : "") + (popKey === sl.key ? " pop" : "") +
         (spotKey === sl.key ? " spot" : "");
       d.tabIndex = 0;
       d.innerHTML =
@@ -357,8 +423,8 @@
   function renderRoster(){
     const seated = seatedSeqs();
     el.roster.innerHTML = "";
-    el.rosterCount.textContent = present().length + " 人出席 / 共 " + STUDENTS.length + " 人";
-    STUDENTS.forEach(s => {
+    el.rosterCount.textContent = present().length + " 人出席 / 共 " + students().length + " 人";
+    students().forEach(s => {
       const absent = !!state.absent[s.seq];
       const c = document.createElement("button");
       c.className = "chip" + (absent ? " absent" : (seated.has(s.seq) ? " seated" : "")) +
@@ -392,24 +458,22 @@
     if(spinTimer) return;
     el.nextBtn.disabled = state.drawing || left === 0 || freeSlots().length === 0;
     const nxt = state.order === "list" ? waiting()[0] : null;
-    el.nextBtn.textContent = left === 0 ? "全部抽完了"
-      : (nxt ? "抽下一位：" + nxt.name : "抽下一位");
+    el.nextBtn.textContent = left === 0 ? "全部抽完了" : (nxt ? "抽下一位：" + nxt.name : "抽下一位");
   }
 
-  function render(candKeys, popKey){
-    renderHangar(candKeys, popKey); renderRoster(); renderCounts();
+  function render(popKey, spotKey){
+    renderSchools(); renderHangar(popKey, spotKey); renderRoster(); renderCounts();
   }
 
-  function pick(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
+  const pick = a => a[Math.floor(Math.random() * a.length)];
   const wait = ms => new Promise(r => setTimeout(r, ms));
 
-  /* ---------- 一位一位抽：按一下開始跑，再按一下停 ---------- */
+  /* ---------- 按一下開始跑，再按一下停 ---------- */
   let spinTimer = null, curCand = null, curStudent = null, curCands = null;
 
   function startSpin(){
     const pool = waiting(), cands = candidateSlots();
     if(!pool.length || !cands.length) return;
-
     state.drawing = true;
     document.body.classList.add("drawing");
     curStudent = (state.order === "list") ? pool[0] : pick(pool);
@@ -423,13 +487,12 @@
       (cands[0].spare ? " · 抽預備機" : " · 按「停！」定格");
     el.nextBtn.textContent = "停！";
     el.nextBtn.classList.add("stop");
-    renderHangar(new Set(cands.map(c => c.key)), null, cands.length ? null : null);
     renderRoster();
 
     spinTimer = setInterval(() => {
       curCand = pick(curCands);
       el.reel.textContent = slotLabel(curCand) || "預備";
-      renderHangar(new Set(curCands.map(c => c.key)), null, curCand.key);
+      renderHangar(null, curCand.key);
       tick();
     }, 75);
   }
@@ -439,12 +502,11 @@
     clearInterval(spinTimer); spinTimer = null;
     el.nextBtn.disabled = true;
 
-    // 收尾：再跳幾格，越跳越慢
     let delay = 90;
     for(let i = 0; i < 5; i++){
       curCand = pick(curCands);
       el.reel.textContent = slotLabel(curCand) || "預備";
-      renderHangar(new Set(curCands.map(c => c.key)), null, curCand.key);
+      renderHangar(null, curCand.key);
       tick();
       await wait(delay);
       delay += 85;
@@ -464,14 +526,14 @@
     document.body.classList.remove("drawing");
     el.nextBtn.classList.remove("stop");
     el.nextBtn.disabled = false;
-    save(); render(null, target.key);
+    save(); render(target.key);
 
     if(!waiting().length){
       el.stageName.textContent = "抽籤完成";
       el.stageMeta.textContent = "共 " + seatedSeqs().size + " 位對號完成";
       await wait(120); finale();
     }
-    curCand = null; curStudent = null; curCands = null;
+    curCand = curStudent = curCands = null;
   }
 
   el.nextBtn.onclick = () => { if(spinTimer) stopSpin(); else startSpin(); };
@@ -481,23 +543,20 @@
       if(spinTimer) stopSpin(); else if(!state.drawing) startSpin();
     }
   });
-  el.clearBtn.onclick = () => {
-    if(spinTimer){ clearInterval(spinTimer); spinTimer = null; state.drawing = false;
-      document.body.classList.remove("drawing"); el.nextBtn.classList.remove("stop"); }
-    if(state.drawing) return;
-    state.assign = {}; state.armed = null; state.now = null;
-    applyPinned(); save(); render();
-    el.stage.className = "stage";
-    el.stageName.textContent = "準備開始";
-    el.stageMeta.textContent = "按「抽下一位」開始滾動，再按「停！」定格（也可用空白鍵）";
-    el.reel.textContent = "––";
-  };
   el.orderBtn.onclick = () => {
     if(state.drawing) return;
     state.order = state.order === "list" ? "random" : "list";
     el.orderBtn.textContent = state.order === "list" ? "順序：名單" : "順序：隨機";
     try{ localStorage.setItem("droneDrawOrder", state.order); }catch(e){}
     renderCounts();
+  };
+  el.clearBtn.onclick = () => {
+    if(spinTimer){
+      clearInterval(spinTimer); spinTimer = null; state.drawing = false;
+      document.body.classList.remove("drawing"); el.nextBtn.classList.remove("stop");
+    }
+    state.assign = {}; state.armed = null; state.now = null;
+    applyPinned(); save(); render(); resetStage();
   };
   el.soundBtn.onclick = () => {
     state.sound = !state.sound;
@@ -507,35 +566,49 @@
   };
   $("printBtn").onclick = () => window.print();
   $("csvBtn").onclick = async () => {
-    let csv = "﻿機號,類別,學生序號,班級,姓名,備註\n";
+    let csv = "﻿學校,機號,類別,學生序號,班級,姓名,備註\n";
     SLOTS.forEach(sl => {
       const s = byId[state.assign[sl.key]], pinHere = pinnedSeqOf(sl.key);
-      csv += [slotLabel(sl), sl.spare ? "預備機" : "主機", s ? s.seq : "", s ? s.cls : "",
-              s ? s.name : "（空）", (s && pinHere === Number(s.seq)) ? "固定" : ""].join(",") + "\n";
+      csv += [CFG.name, slotLabel(sl), sl.spare ? "預備機" : "主機", s ? s.seq : "",
+              s ? s.cls : "", s ? s.name : "（空）",
+              (s && pinHere === Number(s.seq)) ? "固定" : ""].join(",") + "\n";
     });
-    STUDENTS.filter(s => state.absent[s.seq]).forEach(s => {
-      csv += ["", "請假", s.seq, s.cls, s.name, ""].join(",") + "\n";
+    students().filter(s => state.absent[s.seq]).forEach(s => {
+      csv += [CFG.name, "", "未參加", s.seq, s.cls, s.name, ""].join(",") + "\n";
     });
+    const name = CFG.name + "_無人機對號表.csv";
     const dl = await window.claude.use("downloads").catch(() => null);
-    if(dl){ try{ await dl.save({ filename:"無人機對號表.csv", data:csv }); }catch(e){} }
+    if(dl){ try{ await dl.save({ filename:name, data:csv }); }catch(e){} }
     else{
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"}));
-      a.download = "無人機對號表.csv"; a.click();
+      a.download = name; a.click();
     }
   };
 
   try{ state.order = localStorage.getItem("droneDrawOrder") || "list"; }catch(e){}
   el.orderBtn.textContent = state.order === "list" ? "順序：名單" : "順序：隨機";
-  applyPinned();
-  render();
-  if(!waiting().length && seatedSeqs().size){
-    el.stage.classList.add("hit");
-    el.stageName.textContent = "抽籤完成";
-    el.stageMeta.textContent = "共 " + seatedSeqs().size + " 位對號完成";
-    el.reel.textContent = "✓";
-  }
+  let start = "minfu";
+  try{ start = localStorage.getItem("droneDrawSchool") || "minfu"; }catch(e){}
+  if(!SCHOOLS[start]) start = "minfu";
+  selectSchool(start);
   setStatus(false, "本機暫存");
+
+  function watch(){
+    unsub = state.db.doc(docPath()).onSnapshot(
+      snap => {
+        if(state.drawing || !snap.exists) return;
+        const b = snap.data();
+        if(b.school && b.school !== state.school) return;
+        state.assign = b.assign || {};
+        state.absent = b.absent || {};
+        state.pinned = b.pinned || {};
+        state.spareNo = b.spareNo || {};
+        applyPinned(); render(); resetStage();
+      },
+      () => setStatus(false, "同步中斷，改用本機暫存")
+    );
+  }
 
   (async function(){
     let db = null;
@@ -543,10 +616,7 @@
     if(!db){ setStatus(false, "本機暫存（此裝置）"); return; }
     state.db = db;
     setStatus(true, "已保存");
-    db.doc("draw/term").onSnapshot(
-      snap => { if(!state.drawing && snap.exists){ load(snap.data()); render(); } },
-      () => setStatus(false, "同步中斷，改用本機暫存")
-    );
+    watch();
   })();
 })();
 </script>
